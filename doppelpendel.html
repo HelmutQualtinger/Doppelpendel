@@ -98,6 +98,37 @@
         table.receiveShadow = true;
         scene.add(table);
 
+        // FPÖ Logos am Tischrand
+        const loader = new THREE.TextureLoader();
+        loader.setCrossOrigin('anonymous'); // Wichtig für externe Bilder (CORS)
+        const logoUrl = 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/FP%C3%96_Logo_2015.svg/512px-FP%C3%96_Logo_2015.svg.png';
+        
+        loader.load(logoUrl, (texture) => {
+            const logoMaterial = new THREE.MeshBasicMaterial({ 
+                map: texture, 
+                transparent: true,
+                side: THREE.DoubleSide // Von beiden Seiten sichtbar
+            });
+            const logoGeometry = new THREE.PlaneGeometry(1.5, 0.75);
+            
+            const positions = [
+                { x: 4.5, z: 0, rotY: -Math.PI / 2 },  // Ost
+                { x: -4.5, z: 0, rotY: Math.PI / 2 },   // West
+                { x: 0, z: 4.5, rotY: 0 },              // Süd
+                { x: 0, z: -4.5, rotY: Math.PI }        // Nord
+            ];
+
+            positions.forEach(pos => {
+                const logo = new THREE.Mesh(logoGeometry, logoMaterial);
+                logo.position.set(pos.x, -4.4, pos.z); // Etwas höher über der Tischplatte (-4.5)
+                logo.rotation.x = -Math.PI / 2;
+                logo.rotation.z = pos.rotY;
+                scene.add(logo);
+            });
+        }, undefined, (err) => {
+            console.error("Fehler beim Laden des Logos:", err);
+        });
+
         const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 4, 32), new THREE.MeshPhongMaterial({ color: 0x111111 }));
         leg.position.y = -6.5;
         scene.add(leg);

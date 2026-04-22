@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Doppelpendel: Seitliches Pendeln - Three.js</title>
+    <!-- SEO & Social Media Meta Tags -->
+    <meta name="description" content="Eine interaktive 3D-Physik-Simulation eines chaotischen Doppelpendels mit elastischer Spiralfeder, implementiert in Three.js.">
+    <meta name="keywords" content="Physik, Simulation, Three.js, Doppelpendel, Chaos, 3D, WebGL, Runge-Kutta">
+    <meta name="author" content="HelmutQualtinger">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://github.com/HelmutQualtinger/Doppelpendel">
+    <meta property="og:title" content="3D Doppelpendel Simulation - Chaotische Federdynamik">
+    <meta property="og:description" content="Erlebe chaotische Physik in 3D: Ein Doppelpendel mit orthogonalen Achsen und einer elastischen Spiralfeder.">
+    <meta property="og:image" content="screenshot.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://github.com/HelmutQualtinger/Doppelpendel">
+    <meta property="twitter:title" content="3D Doppelpendel Simulation - Chaotische Federdynamik">
+    <meta property="twitter:description" content="Interaktive Three.js Simulation eines Doppelpendels mit Spiral-Feder.">
+    <meta property="twitter:image" content="screenshot.png">
+
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #d10f0f; font-family: sans-serif; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            pointer-events: none;
+            text-shadow: 1px 1px 2px black;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h1>3D Doppelpendel (Seitliches Pendeln)</h1>
+        <p>Simulation mit orthogonalen Schwingungsachsen</p>
+        <p>Feder pendelt quer zum ersten Arm</p>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Konfiguration ---
+        const g = 9.81;
+        const m1 = 10, m2 = 8;
+        const l1 = 2;
+        const l2_rest = 2; 
+        const k_spring = 1500; 
+        const damping_spring = 2.0;
+        const damping_rot = 0.05; // Leichte Luftreibung für die Winkel
+
+        // Startzustand mit deutlichem seitlichem Pendeln (theta2)
+        let state = {
+            theta1: 0.8,    // Erster Arm nach vorn/hinten
+            theta2: 1.2,    // Zweiter Arm deutlich zur Seite
+            r2: 2.0,
+            omega1: 0,
+            omega2: 0,
+            vr2: 0
+        };
+
+        // --- Three.js Setup ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(7, 4, 7);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // Tischplatte (Weiß)
+        const table = new THREE.Mesh(
+            new THREE.CylinderGeometry(6, 6, 0.1, 64),
+            new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 90 })
+        );
+        table.position.y = -4.5;
+        table.receiveShadow = true;
+        scene.add(table);
+
+        // AfD Logos am Tischrand
+        const loader = new THREE.TextureLoader();
+        const logoUrl = 'afd-logo.png';
+        
+        loader.load(logoUrl, (texture) => {
+            const logoMaterial = new THREE.MeshStandardMaterial({
+                map: texture,
+                transparent: true,
+                side: THREE.DoubleSide // Von beiden Seiten sichtbar
+            });
+            const logoGeometry = new THREE.PlaneGeometry(2.5, 1.25);
+
+            const positions = [
+                { x: 4, z: 0, rotZ: Math.PI / 2 },      // Ost - zeigt nach Süd
+                { x: -4, z: 0, rotZ: -Math.PI / 2 },    // West - zeigt nach Nord
+                { x: 0, z: 4, rotZ: Math.PI },          // Süd - zeigt nach West
+                { x: 0, z: -4, rotZ: 0 }                // Nord - zeigt nach Ost
+            ];
+
+            positions.forEach(pos => {
+                const logo = new THREE.Mesh(logoGeometry, logoMaterial);
+                logo.position.set(pos.x, -4.3, pos.z);
+                logo.rotation.x = Math.PI / 2;  // Flach auf der Tischplatte (nach oben)
+                logo.rotation.z = pos.rotZ;     // Tangential ausgerichtet
+                logo.scale.x = -1;              // Spiegelung beheben
+                scene.add(logo);
+            });
+        }, undefined, (err) => {
+            console.error("Fehler beim Laden des Logos:", err);
+        });
+
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.8, 4, 32), new THREE.MeshPhongMaterial({ color: 0x111111 }));
+        leg.position.y = -6.5;
+        scene.add(leg);
+
+        // Licht
+        scene.add(new THREE.AmbientLight(0x505050));
+        const spotLight = new THREE.SpotLight(0xffffff, 300);
+        spotLight.position.set(5, 12, 5);
+        spotLight.castShadow = true;
+        spotLight.shadow.mapSize.set(2048, 2048);
+        scene.add(spotLight);
+
+        // Objekte
+        const sphere1 = new THREE.Mesh(new THREE.SphereGeometry(0.25), new THREE.MeshPhongMaterial({ color: 0xff4444 }));
+        sphere1.castShadow = true;
+        scene.add(sphere1);
+
+        const sphere2 = new THREE.Mesh(new THREE.SphereGeometry(0.25), new THREE.MeshPhongMaterial({ color: 0x44ff44 }));
+        sphere2.castShadow = true;
+        scene.add(sphere2);
+
+        const arm1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1, 16), new THREE.MeshPhongMaterial({ color: 0xcccccc }));
+        arm1.castShadow = true;
+        scene.add(arm1);
+
+        // Spiral-Feder (Gelb)
+        const spiralSegments = 100; 
+        const spiralTurns = 12;
+        const spiralRadius = 0.1;
+        const spiralTubeRadius = 0.03; 
+        const spiralMaterial = new THREE.MeshPhongMaterial({ color: 0xffcc00, shininess: 100 });
+        let spiralMesh = new THREE.Mesh(new THREE.BufferGeometry(), spiralMaterial);
+        spiralMesh.castShadow = true;
+        scene.add(spiralMesh);
+
+        const trail = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.4 }));
+        const trailPoints = [];
+        scene.add(trail);
+
+        // --- Physik (Lagrange 3D) ---
+        function derivatives(s) {
+            let { theta1, theta2, r2, omega1, omega2, vr2 } = s;
+            r2 = Math.max(0.1, r2);
+
+            const cos1 = Math.cos(theta1), sin1 = Math.sin(theta1);
+            const cos2 = Math.cos(theta2), sin2 = Math.sin(theta2);
+            
+            const r_eff = l1 + r2 * cos2;
+            const dr_eff = vr2 * cos2 - r2 * sin2 * omega2;
+
+            // 1. Beschleunigung theta1 (Hauptebene)
+            const inertia1 = m1 * l1 * l1 + m2 * r_eff * r_eff;
+            const dOmega1 = (
+                - 2 * m2 * r_eff * dr_eff * omega1 
+                - g * sin1 * ((m1 + m2) * l1 + m2 * r2 * cos2)
+                - damping_rot * omega1
+            ) / (inertia1 || 0.001);
+
+            // 2. Beschleunigung theta2 (Seitliches Pendeln)
+            const dOmega2 = (
+                - 2 * vr2 * omega2 
+                - sin2 * (r_eff * omega1 * omega1 + g * cos1)
+                - damping_rot * omega2
+            ) / r2;
+
+            // 3. Beschleunigung r2 (Feder)
+            const dVr2 = (
+                r2 * omega2 * omega2 
+                + r_eff * cos2 * omega1 * omega1 
+                + g * cos1 * cos2 
+                - (k_spring * (r2 - l2_rest) + damping_spring * vr2) / m2
+            );
+
+            return { dTheta1: omega1, dTheta2: omega2, dR2: vr2, dOmega1, dOmega2, dVr2 };
+        }
+
+        function rk4Step(s, dt) {
+            const k1 = derivatives(s);
+            const s2 = { theta1: s.theta1 + k1.dTheta1 * dt/2, theta2: s.theta2 + k1.dTheta2 * dt/2, r2: s.r2 + k1.dR2 * dt/2, omega1: s.omega1 + k1.dOmega1 * dt/2, omega2: s.omega2 + k1.dOmega2 * dt/2, vr2: s.vr2 + k1.dVr2 * dt/2 };
+            const k2 = derivatives(s2);
+            const s3 = { theta1: s.theta1 + k2.dTheta1 * dt/2, theta2: s.theta2 + k2.dTheta2 * dt/2, r2: s.r2 + k2.dR2 * dt/2, omega1: s.omega1 + k2.dOmega1 * dt/2, omega2: s.omega2 + k2.dOmega2 * dt/2, vr2: s.vr2 + k2.dVr2 * dt/2 };
+            const k3 = derivatives(s3);
+            const s4 = { theta1: s.theta1 + k3.dTheta1 * dt, theta2: s.theta2 + k3.dTheta2 * dt, r2: s.r2 + k3.dR2 * dt, omega1: s.omega1 + k3.dOmega1 * dt, omega2: s.omega2 + k3.dOmega2 * dt, vr2: s.vr2 + k3.dVr2 * dt };
+            const k4 = derivatives(s4);
+            return {
+                theta1: s.theta1 + (dt/6)*(k1.dTheta1 + 2*k2.dTheta1 + 2*k3.dTheta1 + k4.dTheta1),
+                theta2: s.theta2 + (dt/6)*(k1.dTheta2 + 2*k2.dTheta2 + 2*k3.dTheta2 + k4.dTheta2),
+                r2: s.r2 + (dt/6)*(k1.dR2 + 2*k2.dR2 + 2*k3.dR2 + k4.dR2),
+                omega1: s.omega1 + (dt/6)*(k1.dOmega1 + 2*k2.dOmega1 + 2*k3.dOmega1 + k4.dOmega1),
+                omega2: s.omega2 + (dt/6)*(k1.dOmega2 + 2*k2.dOmega2 + 2*k3.dOmega2 + k4.dOmega2),
+                vr2: s.vr2 + (dt/6)*(k1.dVr2 + 2*k2.dVr2 + 2*k3.dVr2 + k4.dVr2)
+            };
+        }
+
+        function updateSpiral(p1, p2) {
+            const points = [];
+            const dir = new THREE.Vector3().subVectors(p2, p1);
+            const length = dir.length();
+            const axisZ = dir.clone().normalize();
+            let axisX = new THREE.Vector3(1, 0, 0);
+            if (Math.abs(axisZ.dot(axisX)) > 0.9) axisX.set(0, 1, 0);
+            const axisY = new THREE.Vector3().crossVectors(axisZ, axisX).normalize();
+            axisX.crossVectors(axisY, axisZ).normalize();
+            for (let i = 0; i <= spiralSegments; i++) {
+                const t = i / spiralSegments;
+                const angle = t * Math.PI * 2 * spiralTurns;
+                points.push(p1.clone().addScaledVector(axisX, Math.cos(angle)*spiralRadius).addScaledVector(axisY, Math.sin(angle)*spiralRadius).addScaledVector(axisZ, t*length));
+            }
+            
+            const curve = new THREE.CatmullRomCurve3(points);
+            const newGeometry = new THREE.TubeGeometry(curve, spiralSegments, spiralTubeRadius, 8, false);
+            
+            if (spiralMesh.geometry) spiralMesh.geometry.dispose();
+            spiralMesh.geometry = newGeometry;
+        }
+
+        // --- Animation ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const subSteps = 40; 
+            const dt = 0.016 / subSteps; 
+            for (let i = 0; i < subSteps; i++) {
+                state = rk4Step(state, dt);
+                if (isNaN(state.r2) || state.r2 > 15) { // Reset bei Explodieren
+                    state = { theta1: 0.8, theta2: 1.2, r2: 2.0, omega1: 0, omega2: 0, vr2: 0 };
+                }
+            }
+
+            const p0 = new THREE.Vector3(0, 0, 0);
+            // Arm 1 schwingt in der XY-Ebene
+            const p1 = new THREE.Vector3(l1 * Math.sin(state.theta1), -l1 * Math.cos(state.theta1), 0);
+            
+            // Masse 2 schwingt "seitlich" (theta2) relativ zum ersten Arm
+            const r_eff = l1 + state.r2 * Math.cos(state.theta2);
+            const p2 = new THREE.Vector3(
+                r_eff * Math.sin(state.theta1), 
+                -r_eff * Math.cos(state.theta1), 
+                state.r2 * Math.sin(state.theta2) // Das seitliche Auslenken
+            );
+
+            sphere1.position.copy(p1);
+            sphere2.position.copy(p2);
+            
+            arm1.position.copy(p0.clone().lerp(p1, 0.5));
+            arm1.scale.y = l1;
+            arm1.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p1.clone().normalize());
+
+            updateSpiral(p1, p2);
+
+            trailPoints.push(p2.clone());
+            if (trailPoints.length > 1000) trailPoints.shift();
+            trail.geometry.setFromPoints(trailPoints);
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

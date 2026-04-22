@@ -124,10 +124,14 @@
         scene.add(arm1);
 
         // Spiral-Feder (Gelb)
-        const spiralSegments = 150, spiralTurns = 12, spiralRadius = 0.1;
-        const spiralGeometry = new THREE.BufferGeometry();
-        const spiralLine = new THREE.Line(spiralGeometry, new THREE.LineBasicMaterial({ color: 0xffcc00 }));
-        scene.add(spiralLine);
+        const spiralSegments = 100; 
+        const spiralTurns = 12;
+        const spiralRadius = 0.1;
+        const spiralTubeRadius = 0.03; 
+        const spiralMaterial = new THREE.MeshPhongMaterial({ color: 0xffcc00, shininess: 100 });
+        let spiralMesh = new THREE.Mesh(new THREE.BufferGeometry(), spiralMaterial);
+        spiralMesh.castShadow = true;
+        scene.add(spiralMesh);
 
         const trail = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.4 }));
         const trailPoints = [];
@@ -202,7 +206,12 @@
                 const angle = t * Math.PI * 2 * spiralTurns;
                 points.push(p1.clone().addScaledVector(axisX, Math.cos(angle)*spiralRadius).addScaledVector(axisY, Math.sin(angle)*spiralRadius).addScaledVector(axisZ, t*length));
             }
-            spiralGeometry.setFromPoints(points);
+            
+            const curve = new THREE.CatmullRomCurve3(points);
+            const newGeometry = new THREE.TubeGeometry(curve, spiralSegments, spiralTubeRadius, 8, false);
+            
+            if (spiralMesh.geometry) spiralMesh.geometry.dispose();
+            spiralMesh.geometry = newGeometry;
         }
 
         // --- Animation ---

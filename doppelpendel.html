@@ -59,10 +59,18 @@
         const g = 9.81;
         const m1 = 10, m2 = 8;
         const l1 = 2;
-        const l2_rest = 2; 
-        const k_spring = 1500; 
+        const l2_rest = 2;
+        const k_spring = 1500;
         const damping_spring = 2.0;
         const damping_rot = 0.05; // Leichte Luftreibung für die Winkel
+        const magnet_strength = 5; // Stärke des Maus-Magnet-Effekts
+
+        // Mausposition
+        let mouseX = 0, mouseY = 0;
+        document.addEventListener('mousemove', (e) => {
+            mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
 
         // Startzustand mit deutlichem seitlichem Pendeln (theta2)
         let state = {
@@ -88,6 +96,9 @@
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
+        controls.rotateSpeed = 2;
+        controls.dampingFactor = 0.03;
+        controls.zoomSpeed = 1.5;
 
         // Tischplatte (Weiß)
         const table = new THREE.Mesh(
@@ -181,17 +192,21 @@
 
             // 1. Beschleunigung theta1 (Hauptebene)
             const inertia1 = m1 * l1 * l1 + m2 * r_eff * r_eff;
+            const magnetTorque = magnet_strength * mouseX * Math.cos(theta1);
             const dOmega1 = (
-                - 2 * m2 * r_eff * dr_eff * omega1 
+                - 2 * m2 * r_eff * dr_eff * omega1
                 - g * sin1 * ((m1 + m2) * l1 + m2 * r2 * cos2)
                 - damping_rot * omega1
+                + magnetTorque
             ) / (inertia1 || 0.001);
 
             // 2. Beschleunigung theta2 (Seitliches Pendeln)
+            const magnetTorque2 = magnet_strength * mouseY * Math.cos(theta2);
             const dOmega2 = (
-                - 2 * vr2 * omega2 
+                - 2 * vr2 * omega2
                 - sin2 * (r_eff * omega1 * omega1 + g * cos1)
                 - damping_rot * omega2
+                + magnetTorque2
             ) / r2;
 
             // 3. Beschleunigung r2 (Feder)
